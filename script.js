@@ -11,9 +11,9 @@ const CONFIG = {
         imp: "Impressions",
         click: "Clicks",
         views: "Views",
-        grp: "GRP"
-        reach: "Reach"
-        leads: "Lead"
+        grp: "GRP",
+        reach: "Reach",
+        leads: "Lead",
         tvr: "TVR"
     },
 
@@ -30,10 +30,10 @@ const CONFIG = {
         "clicks": "click",
         "view": "views",
         "views": "views",
-        "grp": "grp"
-        "reach": "reach"
-        "lead": "lead"
-        "leads": "leads"
+        "grp": "grp",
+        "reach": "reach",
+        "lead": "lead",
+        "leads": "leads",
         "tvr": "tvr"
     }
 };
