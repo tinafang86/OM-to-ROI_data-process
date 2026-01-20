@@ -14,6 +14,7 @@ const CONFIG = {
         grp: "GRP"
         reach: "Reach"
         leads: "Lead"
+        tvr: "TVR"
     },
 
     // 2. 指標名稱正規化 (Mapping)
@@ -33,6 +34,7 @@ const CONFIG = {
         "reach": "reach"
         "lead": "lead"
         "leads": "leads"
+        "tvr": "tvr"
     }
 };
 
