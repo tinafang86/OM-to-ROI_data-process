@@ -5,92 +5,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Media Data Transformer</title>
+    <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            line-height: 1.6;
-            max-width: 800px;
-            margin: 40px auto;
-            padding: 20px;
-            background-color: #f4f7f6;
-        }
-
-        .container {
-            background: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        h2 {
-            color: #2c3e50;
-            margin-top: 0;
-        }
-
-        .upload-area {
-            border: 2px dashed #cbd5e0;
-            padding: 40px;
-            text-align: center;
-            cursor: pointer;
-            border-radius: 8px;
-            transition: 0.3s;
-        }
-
-        .upload-area:hover {
-            border-color: #4a90e2;
-            background-color: #f0f7ff;
-        }
-
-        #fileInput {
-            display: none;
-        }
-
-        .btn {
-            display: inline-block;
-            background: #4a90e2;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-top: 20px;
-        }
-
-        .btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-
-        #status {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 5px;
-            display: none;
-        }
-
-        .success {
-            background: #d4edda;
-            color: #155724;
-            display: block !important;
-        }
-
-        .error {
-            background: #f8d7da;
-            color: #721c24;
-            display: block !important;
-        }
-    </style>
 </head>
 
 <body>
 
     <div class="container">
-        <h2>📊Data Transformer_OM to ROI Modeller+</h2>
+        <h2>📊 Data Transformer_OM to ROI Modeller+</h2>
         <p>請上傳原始資料 CSV 檔，系統將自動轉換為 ROI_Media 格式並下載。</p>
 
-        <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+        <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
             <strong>點擊或拖拽檔案至此</strong>
             <p>(僅支援 .csv 格式)</p>
             <input type="file" id="fileInput" accept=".csv">
@@ -99,113 +24,7 @@
         <div id="status"></div>
     </div>
 
-    <!-- Media Metrics -->
-    <script>
-        const TARGET_METRICS = ["spend", "imp", "click", "views", "grp"];
-        const fileInput = document.getElementById('fileInput');
-        const statusDiv = document.getElementById('status');
-
-        fileInput.addEventListener('change', function (e) {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            Papa.parse(file, {
-                header: false,
-                skipEmptyLines: true,
-                complete: function (results) {
-                    try {
-                        processData(results.data);
-                    } catch (err) {
-                        showStatus(err.message, 'error');
-                    }
-                }
-            });
-        });
-
-        function showStatus(msg, type) {
-            statusDiv.innerText = msg;
-            statusDiv.className = type;
-        }
-
-        function processData(data) {
-            const headers = data[0].map(h => h.trim());
-            const rows = data.slice(1);
-
-            // 1. 尋找日期欄
-            const dateColIndex = headers.findIndex(h =>
-                h.toLowerCase().includes("week") || h.includes("日期")
-            );
-            if (dateColIndex === -1) throw new Error("找不到包含 'week' 或 '日期' 的欄位");
-
-            // 2. 解析媒體欄位結構 (邏輯同 Apps Script)
-            const mediaGroups = {};
-            headers.forEach((header, colIndex) => {
-                const h = header.toLowerCase();
-                const lastUnderscore = h.lastIndexOf("_");
-                if (lastUnderscore === -1) return;
-
-                const media = h.substring(0, lastUnderscore);
-                let metric = h.substring(lastUnderscore + 1);
-
-                // 指標正規化
-                if (["impression", "impressions", "imp"].includes(metric)) metric = "imp";
-                if (["click", "clicks"].includes(metric)) metric = "click";
-                if (["view", "views"].includes(metric)) metric = "views";
-
-                if (!TARGET_METRICS.includes(metric)) return;
-
-                if (!mediaGroups[media]) mediaGroups[media] = {};
-                mediaGroups[media][metric] = colIndex;
-            });
-
-            if (Object.keys(mediaGroups).length === 0) throw new Error("未偵測到符合格式的媒體指標 (例: meta_spend)");
-
-            // 3. 組合 Output (Long Format)
-            const output = [["Date", "Media", "Spend(TWD)", "Impressions", "Clicks", "Views", "GRP"]];
-
-            rows.forEach(row => {
-                const dateValue = row[dateColIndex];
-                if (!dateValue) return;
-
-                Object.keys(mediaGroups).forEach(media => {
-                    const m = mediaGroups[media];
-                    output.push([
-                        dateValue,
-                        media,
-                        getMetricValue(row, m["spend"]),
-                        getMetricValue(row, m["imp"]),
-                        getMetricValue(row, m["click"]),
-                        getMetricValue(row, m["views"]),
-                        getMetricValue(row, m["grp"])
-                    ]);
-                });
-            });
-
-            // 4. 轉換回 CSV 並觸發下載
-            const csvContent = Papa.unparse(output);
-            downloadCSV(csvContent, `ROI_Media_${new Date().toISOString().split('T')[0]}.csv`);
-            showStatus(`✅ 轉換完成！處理了 ${rows.length} 列日期，產生 ${output.length - 1} 列資料。`, 'success');
-        }
-
-        function getMetricValue(row, colIndex) {
-            if (colIndex === undefined || row[colIndex] === undefined) return 0;
-            const v = row[colIndex].toString().replace(/,/g, "");
-            return v === "" || isNaN(v) ? 0 : Number(v);
-        }
-
-        function downloadCSV(content, filename) {
-            const blob = new Blob(["\ufeff" + content], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", filename);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-    </script>
-
+    <script src="script.js"></script>
 </body>
 
 </html>
