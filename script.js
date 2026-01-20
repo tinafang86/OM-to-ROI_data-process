@@ -4,8 +4,7 @@
  * ==========================================
  */
 const CONFIG = {
-    // 1. 定義你想要產出的指標與順序 (對應 CSV 的標題列)
-    // 格式：{ 內部ID: "CSV顯示的標題名稱" }
+    // 1. 定義 CSV 產出的指標與順序
     TARGET_METRICS: {
         spend: "Spend(TWD)",
         imp: "Impressions",
@@ -17,30 +16,23 @@ const CONFIG = {
         tvr: "TVR"
     },
 
-    // 2. 指標名稱正規化 (Mapping)
-    // 系統會自動抓取底線後的字串，並比對下方清單轉換為內部ID
-    METRIC_MAPPING: {
+    // 2. 指標關鍵字比對 (標題只要包含這些字眼就會被分類)
+    METRIC_KEYWORDS: {
         "spend": "spend",
         "cost": "spend",
-        "spent": "spend",
-        "impression": "imp",
-        "impressions": "imp",
         "imp": "imp",
         "click": "click",
-        "clicks": "click",
         "view": "views",
-        "views": "views",
         "grp": "grp",
         "reach": "reach",
-        "lead": "lead",
-        "leads": "leads",
+        "lead": "leads",
         "tvr": "tvr"
     }
 };
 
 /**
  * ==========================================
- * 核心邏輯區 勿更改
+ * 核心邏輯區
  * ==========================================
  */
 const fileInput = document.getElementById('fileInput');
@@ -58,7 +50,8 @@ fileInput.addEventListener('change', function (e) {
             try {
                 processData(results.data);
             } catch (err) {
-                showStatus(err.message, 'error');
+                console.error(err);
+                showStatus("錯誤: " + err.message, 'error');
             }
         }
     });
@@ -70,41 +63,54 @@ function showStatus(msg, type) {
 }
 
 function processData(data) {
-    const headers = data[0].map(h => h.trim());
+    if (!data || data.length < 2) throw new Error("檔案內容不足");
+
+    const headers = data[0].map(h => h.trim().toLowerCase());
     const rows = data.slice(1);
 
     // 1. 尋找日期欄位
     const dateColIndex = headers.findIndex(h =>
-        h.toLowerCase().includes("week") || h.includes("日期")
+        h.includes("week") || h.includes("日期") || h.includes("date")
     );
-    if (dateColIndex === -1) throw new Error("找不到包含 'week' 或 '日期' 的欄位");
+    if (dateColIndex === -1) throw new Error("找不到日期欄位 (標題需含 'week', '日期' 或 'date')");
 
-    // 2. 解析媒體欄位結構 (以最後一個底線 _ 作為分割點)
+    // 2. 解析媒體與指標對應
     const mediaGroups = {};
-    const metricKeys = Object.keys(CONFIG.TARGET_METRICS);
+    const metricIds = Object.keys(CONFIG.TARGET_METRICS);
+    const keywords = Object.keys(CONFIG.METRIC_KEYWORDS);
 
-    headers.forEach((header, colIndex) => {
-        const h = header.toLowerCase();
-        const lastUnderscore = h.lastIndexOf("_");
-        if (lastUnderscore === -1) return;
+    headers.forEach((h, colIndex) => {
+        if (colIndex === dateColIndex) return;
 
-        // metrics_ 前方的字串為 Media Type
-        const media = h.substring(0, lastUnderscore);
-        const rawMetric = h.substring(lastUnderscore + 1);
+        // 偵測指標
+        let foundMetricId = null;
+        for (const kw of keywords) {
+            if (h.includes(kw)) {
+                foundMetricId = CONFIG.METRIC_KEYWORDS[kw];
+                break;
+            }
+        }
 
-        // 進行正規化
-        const metric = CONFIG.METRIC_MAPPING[rawMetric];
+        if (!foundMetricId) return;
 
-        // 檢查是否為我們需要的指標
-        if (!metric || !metricKeys.includes(metric)) return;
+        // 提取媒體名稱 (移除標題中的指標關鍵字)
+        let mediaName = h;
+        keywords.forEach(kw => {
+            if (h.includes(kw)) {
+                mediaName = mediaName.replace(`_${kw}`, "").replace(kw, "");
+            }
+        });
+        mediaName = mediaName.replace(/^_+|_+$/g, ''); // 清理前後底線
 
-        if (!mediaGroups[media]) mediaGroups[media] = {};
-        mediaGroups[media][metric] = colIndex;
+        if (!mediaGroups[mediaName]) mediaGroups[mediaName] = {};
+        mediaGroups[mediaName][foundMetricId] = colIndex;
     });
 
-    if (Object.keys(mediaGroups).length === 0) throw new Error("未偵測到符合格式的媒體指標 (例: meta_spend)");
+    if (Object.keys(mediaGroups).length === 0) {
+        throw new Error("無法辨識媒體指標，請檢查標題是否包含 spend, imp, click 等關鍵字");
+    }
 
-    // 3. 組合 Output (根據 CONFIG 自動產出)
+    // 3. 組合 Output 數據
     const outputHeaders = ["Date", "Media", ...Object.values(CONFIG.TARGET_METRICS)];
     const output = [outputHeaders];
 
@@ -114,25 +120,25 @@ function processData(data) {
 
         Object.keys(mediaGroups).forEach(media => {
             const m = mediaGroups[media];
-
-            // 動態組建每一列資料
             const rowData = [dateValue, media];
-            metricKeys.forEach(key => {
-                rowData.push(getMetricValue(row, m[key]));
-            });
 
+            metricIds.forEach(id => {
+                const colIdx = m[id];
+                rowData.push(getMetricValue(row, colIdx));
+            });
             output.push(rowData);
         });
     });
 
-    // 4. 下載 CSV
+    // 4. 下載檔案
     const csvContent = Papa.unparse(output);
     downloadCSV(csvContent, `ROI_Media_${new Date().toISOString().split('T')[0]}.csv`);
-    showStatus(`✅ 轉換完成！處理了 ${rows.length} 天資料，產生 ${output.length - 1} 列數據。`, 'success');
+    showStatus(`✅ 轉換成功！偵測到 ${Object.keys(mediaGroups).length} 個媒體渠道。`, 'success');
 }
 
 function getMetricValue(row, colIndex) {
     if (colIndex === undefined || row[colIndex] === undefined) return 0;
+    // 移除千分位逗號並轉為數字
     const v = row[colIndex].toString().replace(/,/g, "");
     return v === "" || isNaN(v) ? 0 : Number(v);
 }
