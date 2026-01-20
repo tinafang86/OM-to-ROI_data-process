@@ -1,116 +1,85 @@
 /**
  * ==========================================
- * 【手動調整區】!新增指標改這裡!
+ * 【手動調整區】這裡決定你要抓什麼、產出什麼
  * ==========================================
  */
 const CONFIG = {
-    // 1. CSV 產出的媒體指標名稱、順序。可以往後新增
+    // 1. 定義 CSV 產出的欄位與標題名稱
+    // 順序決定了產出 CSV 的欄位順序
     TARGET_METRICS: {
         spend: "Spend(TWD)",
         imp: "Impressions",
         click: "Clicks",
         views: "Views",
-        grp: "GRP",
-        reach: "Reach",
-        leads: "Lead",
-        tvr: "TVR"
+        grp: "GRP"
     },
 
-    // 2. 指標關鍵字比對 (raw data中只要包含以下就會被分類為media type)
-    METRIC_KEYWORDS: {
+    // 2. 定義「指標後綴」的判斷規則 (這就是你說的：抓取前面名稱的依據)
+    // 格式： "原始欄位結尾出現的字": "對應到上面的哪個內部ID"
+    // 只要標題是以「_加上這些字」結尾，前面全部都會被當作 Media Type
+    METRIC_MAPPING: {
         "spend": "spend",
         "cost": "spend",
         "imp": "imp",
+        "impression": "imp",
+        "impressions": "imp",
         "click": "click",
+        "clicks": "click",
         "view": "views",
-        "grp": "grp",
-        "reach": "reach",
-        "lead": "leads",
-        "tvr": "tvr"
+        "views": "views",
+        "grp": "grp"
     }
 };
 
 /**
  * ==========================================
- * 核心邏輯區。以下勿更動
+ * 核心邏輯區 (自動化抓取邏輯)
  * ==========================================
  */
-const fileInput = document.getElementById('fileInput');
-const statusDiv = document.getElementById('status');
-
-// 檔案上傳
-fileInput.addEventListener('change', function (e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    Papa.parse(file, {
-        header: false,
-        skipEmptyLines: true,
-        complete: function (results) {
-            try {
-                processData(results.data);
-            } catch (err) {
-                console.error(err);
-                showStatus("錯誤: " + err.message, 'error');
-            }
-        }
-    });
-});
-
-function showStatus(msg, type) {
-    statusDiv.innerText = msg;
-    statusDiv.className = type;
-}
 
 function processData(data) {
-    if (!data || data.length < 2) throw new Error("檔案內容不足");
-
-    const headers = data[0].map(h => h.trim().toLowerCase());
+    const headers = data[0].map(h => h.trim());
     const rows = data.slice(1);
 
-    // 1. 尋找日期欄位
+    // 1. 定位日期欄位
     const dateColIndex = headers.findIndex(h =>
-        h.includes("week") || h.includes("日期") || h.includes("date")
+        h.toLowerCase().includes("week") || h.includes("日期")
     );
-    if (dateColIndex === -1) throw new Error("找不到日期欄位 (標題需含 'week', '日期' 或 'date')");
+    if (dateColIndex === -1) throw new Error("找不到日期欄位 (需包含 week 或 日期)");
 
-    // 2. 解析媒體與指標對應
     const mediaGroups = {};
-    const metricIds = Object.keys(CONFIG.TARGET_METRICS);
-    const keywords = Object.keys(CONFIG.METRIC_KEYWORDS);
+    const metricMappingKeys = Object.keys(CONFIG.METRIC_MAPPING);
 
-    headers.forEach((h, colIndex) => {
-        if (colIndex === dateColIndex) return;
+    // 2. 動態解析媒體名稱與指標
+    headers.forEach((header, colIndex) => {
+        const h = header.toLowerCase();
 
-        // 偵測指標
-        let foundMetricId = null;
-        for (const kw of keywords) {
-            if (h.includes(kw)) {
-                foundMetricId = CONFIG.METRIC_KEYWORDS[kw];
+        let foundMetricKey = null;
+        let matchedSuffix = "";
+
+        // 核心邏輯：從定義好的 Mapping 中找尋匹配的「結尾」
+        for (const key of metricMappingKeys) {
+            if (h.endsWith("_" + key)) { // 判斷是否為 "_指標" 結尾
+                foundMetricKey = CONFIG.METRIC_MAPPING[key];
+                matchedSuffix = "_" + key; // 記錄這段後綴，等等要切掉它
                 break;
             }
         }
 
-        if (!foundMetricId) return;
+        // 如果符合指標格式，就抓取前面剩餘的部分當作 Media Name
+        if (foundMetricKey) {
+            // 抓取前面的全部名稱：例如 "meta_awn_spend" 切掉 "_spend" 變成 "meta_awn"
+            const mediaName = h.substring(0, h.lastIndexOf(matchedSuffix));
 
-        // 提取媒體名稱 (移除標題中的指標關鍵字)
-        let mediaName = h;
-        keywords.forEach(kw => {
-            if (h.includes(kw)) {
-                mediaName = mediaName.replace(`_${kw}`, "").replace(kw, "");
-            }
-        });
-        mediaName = mediaName.replace(/^_+|_+$/g, ''); // 清理前後底線
-
-        if (!mediaGroups[mediaName]) mediaGroups[mediaName] = {};
-        mediaGroups[mediaName][foundMetricId] = colIndex;
+            if (!mediaGroups[mediaName]) mediaGroups[mediaName] = {};
+            mediaGroups[mediaName][foundMetricKey] = colIndex;
+        }
     });
 
-    if (Object.keys(mediaGroups).length === 0) {
-        throw new Error("無法辨識媒體指標，請檢查標題是否包含 spend, imp, click 等關鍵字");
-    }
+    if (Object.keys(mediaGroups).length === 0) throw new Error("未偵測到任何符合格式的欄位");
 
-    // 3. 組合 Output 數據
+    // 3. 產出資料 (Long Format)
+    const metricKeys = Object.keys(CONFIG.TARGET_METRICS);
     const outputHeaders = ["Date", "Media", ...Object.values(CONFIG.TARGET_METRICS)];
     const output = [outputHeaders];
 
@@ -122,35 +91,42 @@ function processData(data) {
             const m = mediaGroups[media];
             const rowData = [dateValue, media];
 
-            metricIds.forEach(id => {
-                const colIdx = m[id];
-                rowData.push(getMetricValue(row, colIdx));
+            // 根據定義的指標順序填入數值
+            metricKeys.forEach(key => {
+                rowData.push(getMetricValue(row, m[key]));
             });
             output.push(rowData);
         });
     });
 
-    // 4. 下載檔案
+    // 4. 轉換與下載
     const csvContent = Papa.unparse(output);
     downloadCSV(csvContent, `ROI_Media_${new Date().toISOString().split('T')[0]}.csv`);
-    showStatus(`✅ 轉換成功！偵測到 ${Object.keys(mediaGroups).length} 個媒體渠道。`, 'success');
 }
 
+// 輔助函式：數值清洗
 function getMetricValue(row, colIndex) {
     if (colIndex === undefined || row[colIndex] === undefined) return 0;
-    // 移除千分位逗號並轉為數字
     const v = row[colIndex].toString().replace(/,/g, "");
     return v === "" || isNaN(v) ? 0 : Number(v);
 }
 
+// 輔助函式：下載 CSV (含 BOM 防亂碼)
 function downloadCSV(content, filename) {
     const blob = new Blob(["\ufeff" + content], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", filename);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
     link.click();
-    document.body.removeChild(link);
 }
+
+// 監聽檔案上傳 (其餘 UI 邏輯同前)
+document.getElementById('fileInput').addEventListener('change', function (e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    Papa.parse(file, {
+        header: false,
+        skipEmptyLines: true,
+        complete: (r) => { try { processData(r.data); } catch (e) { alert(e.message); } }
+    });
+});
