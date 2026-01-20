@@ -22,7 +22,7 @@ const CONFIG = {
     METRIC_MAPPING: {
         "spend": "spend",
         "cost": "spend",
-        "spent": "spend"
+        "spent": "spend",
         "impression": "imp",
         "impressions": "imp",
         "imp": "imp",
