@@ -12,6 +12,8 @@ const CONFIG = {
         click: "Clicks",
         views: "Views",
         grp: "GRP"
+        reach: "Reach"
+        leads: "Lead"
     },
 
     // 2. 指標名稱正規化 (Mapping)
@@ -19,6 +21,7 @@ const CONFIG = {
     METRIC_MAPPING: {
         "spend": "spend",
         "cost": "spend",
+        "spent": "spend"
         "impression": "imp",
         "impressions": "imp",
         "imp": "imp",
@@ -27,6 +30,9 @@ const CONFIG = {
         "view": "views",
         "views": "views",
         "grp": "grp"
+        "reach": "reach"
+        "lead": "lead"
+        "leads": "leads"
     }
 };
 
