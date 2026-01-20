@@ -4,7 +4,7 @@
  * ==========================================
  */
 const CONFIG = {
-    // 1. 定義 CSV 產出的指標與順序
+    // 1. CSV 產出的媒體指標名稱、順序。可以往後新增
     TARGET_METRICS: {
         spend: "Spend(TWD)",
         imp: "Impressions",
@@ -16,7 +16,7 @@ const CONFIG = {
         tvr: "TVR"
     },
 
-    // 2. 指標關鍵字比對 (標題只要包含這些字眼就會被分類)
+    // 2. 指標關鍵字比對 (raw data中只要包含以下就會被分類為media type)
     METRIC_KEYWORDS: {
         "spend": "spend",
         "cost": "spend",
@@ -32,13 +32,13 @@ const CONFIG = {
 
 /**
  * ==========================================
- * 核心邏輯區
+ * 核心邏輯區。以下勿更動
  * ==========================================
  */
 const fileInput = document.getElementById('fileInput');
 const statusDiv = document.getElementById('status');
 
-// 監聽檔案上傳
+// 檔案上傳
 fileInput.addEventListener('change', function (e) {
     const file = e.target.files[0];
     if (!file) return;
